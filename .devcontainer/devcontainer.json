@@ -1,0 +1,48 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go
+{
+    "name": "Go",
+    "image": "mcr.microsoft.com/devcontainers/go:0-1.19-bullseye",
+    // Features to add to the dev container. More info: https://containers.dev/features.
+    // "features": {},
+    // Configure tool-specific properties.
+    "customizations": {
+        // Configure properties specific to VS Code.
+        "vscode": {
+            // Set *default* container specific settings.json values on container create.
+            "settings": {
+                "go.toolsManagement.checkForUpdates": "local",
+                "go.useLanguageServer": true,
+                "go.gopath": "/go"
+			},
+			"extensions": [
+				"golang.go",
+				"msyrus.go-doc",
+				"premparihar.gotestexplorer",
+				"windmilleng.vscode-go-autotest",
+				"foxundermoon.shell-format",
+				"timonwong.shellcheck",
+				"bmalehorn.shell-syntax",
+				"rogalmic.bash-debug",
+				"ms-azuretools.vscode-docker",
+				"xyc.vscode-mdx-preview",
+				"yzhang.markdown-all-in-one"
+			]
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/azure-cli:1": {},
+        "ghcr.io/devcontainers/features/github-cli": {}
+    }, 
+    "runArgs": [],
+    // "hostRequirements": {
+	// 	"cpus": 4,
+    //     "memory": "32gb"
+	// },
+
+    
+    // this will update the .bashrc and create the local-secrets.env file
+    "postCreateCommand": "./devsecrets setup --input-file devsecrets.json"
+
+  
+}

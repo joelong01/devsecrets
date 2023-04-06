@@ -1,0 +1,18 @@
+{
+    "[go]": {
+        "editor.insertSpaces": true,
+        "editor.useTabStops": false,
+        "editor.tabSize": 5
+
+    },
+    "go.testEnvFile": "${workspaceFolder}/.devcontainer/local-secrets.env",
+    "spellright.language": [
+        "en"
+    ],
+    "spellright.documentTypes": [
+        "markdown",
+        "latex"
+    ],
+    
+    
+}

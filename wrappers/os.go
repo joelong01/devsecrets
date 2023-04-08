@@ -37,7 +37,36 @@ func CmdExecOs(name string, args []string) (stdout bytes.Buffer, stderr bytes.Bu
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Stdin = os.Stdin
 	err = cmd.Run()
+
+	//	we care more about the error returned by the app that is run, not the cmd.Run() error -
+	//	eg. 'gh' will have an error "exit status 1" with a stderr of the actual message we care about
+	if stderr.Len() != 0 && err != nil {
+		// this means we executed the command just fine, it just happened to return an error
+		err = errors.New(stderr.String())
+	}
+
+	return
+}
+
+func CmdExecOsInteractive(name string, args []string) (stdout bytes.Buffer, stderr bytes.Buffer, err error) {
+	if globals.Verbose {
+		// globals.Echo(CmdArgsToString(name, args) + "\n")
+		s := globals.HidePat(CmdArgsToString(name, args))
+		log.Println(s)
+	}
+
+	cmd := exec.Command(name, args...)
+	//
+	//	this will allow us to use the normal console for output/errors *and* capture the buffer to use in the program
+	mwStdout := io.MultiWriter(os.Stdout, &stdout)
+ 	mwStdErr := io.MultiWriter(os.Stderr, &stderr)
+	cmd.Stdout = mwStdout
+	cmd.Stderr = mwStdErr
+	cmd.Stdin = os.Stdin
+	_ = cmd.Start()
+	err = cmd.Wait()
 
 	//	we care more about the error returned by the app that is run, not the cmd.Run() error -
 	//	eg. 'gh' will have an error "exit status 1" with a stderr of the actual message we care about

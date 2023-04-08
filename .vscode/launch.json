@@ -1,23 +1,7 @@
 {
     "configurations": [
-        {
-            "type": "bashdb",
-            "request": "launch",
-            "name": "Bash-Debug .startup.sh",
-            "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/workspaces/devsecrets/.devcontainer/.startup.sh",
-            "args": []
-        },
-        {
-            "type": "bashdb",
-            "request": "launch",
-            "name": "Bash-Debug (select script from list of sh files)",
-            "cwd": "${workspaceFolder}",
-            "program": "${command:SelectScriptName}",
-            "terminalKind": "integrated",
-            "args": []
-        },
-        
+      
+       
         {
             "name": "update",
             "type": "go",
@@ -46,35 +30,6 @@
                 "devsecrets.json",
                 "--verbose",
                 "--all"
-            ]
-        },
-        {
-            "name": "Verify",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceRoot}/main.go",
-            "console": "integratedTerminal",
-            "args": [
-                "infra",
-                "verify",
-                "--input-file",
-                "local-config.yaml"
-            ]
-        },
-        {
-            "name": "Delete",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceRoot}/main.go",
-            "console": "integratedTerminal",
-            "args": [
-                "infra",
-                "delete",
-                "--input-file",
-                "local-config.yaml",
-                "--verbose"
             ]
         }
     ]

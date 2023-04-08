@@ -77,7 +77,7 @@ func init() {
 		"a json file with the settings to run the cli")
 	rootCmd.PersistentFlags().BoolP("all", "a", false, "Include all items")
 	rootCmd.PersistentFlags().StringP("name", "n", "", "The name of the item (optional)")
-	rootCmd.PersistentFlags().BoolP("verbose", "v", true, "echo actions to stderr")
+	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "echo actions to stderr")
 
 	cobra.OnInitialize()
 }
@@ -112,9 +112,7 @@ func initConfig(cmd *cobra.Command) error {
 	viper.AddConfigPath("$HOME")
 	viper.AutomaticEnv() // read in environment variables that match
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		globals.EchoWarning("Using Secrets File:", viper.ConfigFileUsed(), "\n")
-	} else {
+	if err := viper.ReadInConfig(); err != nil {
 		globals.EchoError(err.Error() + "\n")
 	}
 

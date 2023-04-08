@@ -250,7 +250,7 @@ func InitFromCobra(cmd *cobra.Command) {
 	settings = nil
 	settings = []*Setting{}
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Name != "help"  { // these are both flags and can't be changed at runtime
+		if flag.Name != "help" { // these are both flags and can't be changed at runtime
 			AddSetting(flag.Name, flag.Value.String(), flag.Usage)
 
 		}
@@ -479,8 +479,12 @@ func (s Secret) FillChar(row int, col int) string {
 		panic("Bad column index passed in")
 	}
 }
-
-func LoadSecretFile()(err error) {
+/*
+Load the secrets file and return a string that has the file modified time
+panics on error as there isn't much we can do if we can't find, open, or parse
+the input file.
+*/
+func LoadSecretFile() (lastModified string) {
 	inputFile := Value("input-file")
 	if inputFile == "" {
 		globals.EchoError("--input-file must be set! \n")
@@ -492,11 +496,18 @@ func LoadSecretFile()(err error) {
 		os.Exit(2)
 	}
 	err = json.Unmarshal(bytes, &LocalSecrets)
+	if err != nil {
+		globals.EchoError("error unmarshaling " + inputFile + " " + err.Error() + "\n")
+		os.Exit(2)
+	}
+	fileInfo, err := os.Stat(inputFile)
+	globals.PanicOnError(err)
+	lastModified = fileInfo.ModTime().String()
 	return
 }
 
-func GetSecretFileName()(secretFileName string ) {
-	var secretEnvFile = ".devsecrets.env"
+func GetSecretEnvFileName() (secretFileName string) {
+	var secretEnvFile = ".devsecrets.sh"
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)

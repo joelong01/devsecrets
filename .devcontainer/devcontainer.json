@@ -24,8 +24,6 @@
 				"timonwong.shellcheck",
 				"bmalehorn.shell-syntax",
 				"rogalmic.bash-debug",
-				"ms-azuretools.vscode-docker",
-				"xyc.vscode-mdx-preview",
 				"yzhang.markdown-all-in-one"
 			]
         }

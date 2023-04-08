@@ -46,7 +46,7 @@ this should be called when the container is created.  its job is to
 func OnSetup() error {
 
 	// touch the .env file
-	secretEnvFilePath := config.GetSecretFileName()
+	secretEnvFilePath := config.GetSecretEnvFileName()
 
 	// update the .bashrc
 	cwd, _ := os.Getwd()
@@ -59,17 +59,15 @@ func OnSetup() error {
 	exeFileSpec, _ := os.Executable()
 
 	secretUpdateCmd := fmt.Sprint(exeFileSpec, " update --verbose --all --input-file ", jsonSecretsInputFile)
-	
-	// we need to source the .env file before *and* after running update so that update can see the values of
-	// the environment variables
-	toWrite := fmt.Sprint("source ", secretEnvFilePath, "\n",
-		secretUpdateCmd, "\n",
+
+	toWrite := fmt.Sprint(secretUpdateCmd, "\n",
 		"source ", secretEnvFilePath, "\n")
 
 	updateShellStartupFile(filepath.Join(homeDir, ".bashrc"), "devsecrets", toWrite)
 	updateShellStartupFile(filepath.Join(homeDir, ".zshrc"), "devsecrets", toWrite)
 	return nil
 }
+
 /*
 this deletes all lines that have the word "devsecrets" in it. i'm worried that somebody or some tool might add
 the executable to the path and then we blast the path.  need to fix.

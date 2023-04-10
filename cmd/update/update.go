@@ -94,6 +94,10 @@ func OnUpdate() {
 				val = globals.EnterString(prompt)
 			} else {
 				val, _ = wrappers.ExecBash(s.ShellScript)
+				if val == "" {
+					globals.EchoWarning(s.EnvironmentVariable, " was set to empty string by the script ",
+						s.ShellScript, "\n")
+				}
 			}
 
 		}

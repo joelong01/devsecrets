@@ -10,16 +10,14 @@ the OnCreate() function will check to see if the resources arleady exist and if 
 package update
 
 import (
-	"bufio"
 	"devsecrets/config"
 	"devsecrets/globals"
 	"devsecrets/wrappers"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
-
-var START_SECRET_SECTION string = "# START SECRETS"
 
 /*
 called by .bashrc (or .zshrc) *before* the secrets.env file is loaded.
@@ -34,91 +32,81 @@ environment variables are set is if something else -- e.g. codespaces --
 sets the values.
 */
 func OnUpdate() {
-	jsonSecretFileLastModified := config.LoadSecretFile()
-
-	var ghAccountInfo wrappers.GithubAccountInfo
-	var err error
-	if config.LocalSecrets.Options.UseGitHubUserSecrets {
-		// repo uses GH secrets -- make sure we are logged into GH.
-		loggedIntoGithub, _ := wrappers.GetGitHubAuthStatus()
-		if !loggedIntoGithub {
-			err := wrappers.GHLoginToGitHub()
-			if err != nil {
-				globals.EchoError("Error logging into Github: ", err.Error(), "\n")
-				globals.EchoError("Exiting.  Login to GH and rerun the program\n")
-				os.Exit(2)
-			}
-		}
-		ghAccountInfo, err = wrappers.GHGetAccountInfo()
-		globals.PanicOnError(err)
-
-	}
-
+	secrets, jsonSecretFileLastModified := config.LoadSecretFile() // this also sets LocalSecrets
 	envFile := config.GetSecretEnvFileName()
-	secretsMap, err := parseSecretEnvFile(envFile)
+	fileInfo, err := os.Stat(envFile)
+	scriptModTime := fileInfo.ModTime()
 	globals.PanicOnError(err)
-
-	// has the input file changed since the last time we updated the secrets?
-	lastUpdated, ok := secretsMap["JSON_SECRET_LAST_MODIFIED_TIME"]
-	if ok {
-		if strings.EqualFold(lastUpdated, jsonSecretFileLastModified) {
-			globals.EchoInfo("Secrets in ", config.Value("input-file"), " have not changed.\n")
-			return
-		}
+	if scriptModTime.After(jsonSecretFileLastModified) || scriptModTime.Equal(jsonSecretFileLastModified) {
+		// the json hasn't changed since we last updated the secret script
+		globals.EchoInfo("script is newer than json")
+		// return
 	}
-	globals.EchoInfo("Updating Secrets based on ", config.Value("input-file"), "\n")
 
-	// there has been an update -- we construct a new .devsecrets.sh file and replace the old one
-	// update GitHub secrets as appropriate
+	collectSecrets(&secrets.Secrets)
 
-	toWrite := `#!/bin/bash
+	buildAndSaveSecretsScript(secrets.Secrets)
 
-	# if we are running in codespaces, we don't load the local environment
-	if [[ $CODESPACES == true ]]; then  
-		return 0
-	fi
-	
-	`
+	if config.LocalSecrets.Options.UseGitHubUserSecrets {
+		saveSecretsInCodeSpace(secrets.Secrets)
+	}
 
-	toWrite += START_SECRET_SECTION + "\n"
+}
 
-	// go through the json secrets (the "my depot requires these secrets") file
-	// and get values for all of them - either from the $HOME/.devsecrets.sh file
-	// or by prompting the user for the value
-	for _, s := range config.LocalSecrets.Secrets {
-		// is the value set?
-		val, ok := secretsMap[s.EnvironmentVariable]
-		if !ok {
-			if s.ShellScript == "" {
-				prompt := fmt.Sprint("Enter value for ", s.EnvironmentVariable, ": ")
-				val = globals.EnterString(prompt)
+/*
+iterates through the json config and get the value of the env variable
+1. if they are already set in the secrets script
+2. by running the configured script if it is set
+3. by prompting the user
+*/
+func collectSecrets(secrets *[]config.Secret) {
+	loadSecretsScript := config.GetSecretEnvFileName()
+	var value string
+	var found bool
+	var err error
+	for i := 0; i < len(*secrets); i++ {
+		secret := &(*secrets)[i]
+		found, value, _ = wrappers.FindKvpValueInFile(secret.EnvironmentVariable, loadSecretsScript)
+
+		if !found {
+			if secret.ShellScript == "" {
+				prompt := fmt.Sprint("Enter value for ", secret.EnvironmentVariable, ": ")
+				value = globals.EnterString(prompt)
 			} else {
-				val, _ = wrappers.ExecBash(s.ShellScript)
-				if val == "" {
-					globals.EchoWarning(s.EnvironmentVariable, " was set to empty string by the script ",
-						s.ShellScript, "\n")
+				value, err = wrappers.ExecBash(secret.ShellScript)
+				if err != nil {
+					log.Fatal("Error executing script: ", err)
+				}
+
+				if value == "" {
+					globals.EchoWarning("Warning: ", secret.EnvironmentVariable,
+						" was set to an empty string by the script ",
+						secret.ShellScript)
 				}
 			}
-
-		}
-		toWrite += getBashEnvLines(s.EnvironmentVariable, val, s.Description)
-
-		if config.LocalSecrets.Options.UseGitHubUserSecrets {
-			err = wrappers.GHSecretSet(ghAccountInfo.Account, ghAccountInfo.Repo, s.EnvironmentVariable, val)
-			if err != nil {
-				globals.EchoError("Error saving GitHub Secrets: ", err.Error())
-			}
 		}
 
+		secret.Value = value
+	}
+}
+
+func buildAndSaveSecretsScript(secrets []config.Secret) {
+	loadSecretsScript := config.GetSecretEnvFileName()
+	toWrite := `#!/bin/bash
+
+# if we are running in codespaces, we don't load the local environment
+if [[ $CODESPACES == true ]]; then  
+	return 0
+fi
+
+`
+	for _, secret := range secrets {
+		toWrite += fmt.Sprint("# ", secret.Description, "\n",
+			secret.EnvironmentVariable, "=", "\"", secret.Value, "\"", "\n",
+			"export ", secret.EnvironmentVariable, "\n")
 	}
 
-	// the local file has one "magic" setting, which is the last modified time of the --input-file
-	toWrite += getBashEnvLines("JSON_SECRET_LAST_MODIFIED_TIME", jsonSecretFileLastModified,
-		"a setting used be the tool to not do work if it has already been done")
-
-	// globals.EchoInfo(toWrite)
-
-	file, err := os.Create(envFile)
+	file, err := os.Create(loadSecretsScript)
 	globals.PanicOnError(err)
 	defer file.Close()
 
@@ -126,65 +114,51 @@ func OnUpdate() {
 	globals.PanicOnError(err)
 
 }
-func getBashEnvLines(key string, val string, description string) string {
-	if !strings.HasPrefix(val, "\"") {
-		val = "\"" + val + "\""
-	}
-	return fmt.Sprint("# ", description, "\n",
-		key, "=", val, "\n",
-		"export ", key, "\n")
-}
 
 /*
-everything before START_SECRET_SECTION is skipped
-parseSecretEnvFile reads a file containing key-value pairs in the
-format "key=value" and returns a map containing the parsed pairs.
-
-	Blank lines, comments starting with "#" and lines starting with
-	"export " are ignored. If a key is duplicated, an error is returned.
+saves all the secrets in the array in CodeSpaces.  make sure to not overwrite the repos the secret is set in.
 */
-func parseSecretEnvFile(fileName string) (secrets map[string]string, err error) {
-	secrets = make(map[string]string)
-	file, err := os.Open(fileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = nil // this is ok
+func saveSecretsInCodeSpace(secrets []config.Secret) {
 
+	pat, err := wrappers.GHGetAuthToken()
+	globals.PanicOnError(err)
+	// repo uses GH secrets -- make sure we are logged into GH.
+	loggedIntoGithub, _ := wrappers.GetGitHubAuthStatus()
+	if !loggedIntoGithub {
+		err := wrappers.GHLoginToGitHub()
+		if err != nil {
+			globals.EchoError("Error logging into Github: ", err.Error(), "\n")
+			globals.EchoError("Exiting.  Login to GH and rerun the program\n")
+			os.Exit(2)
 		}
-		return
 	}
-	defer file.Close()
+	ghAccountInfo, err := wrappers.GHGetAccountInfo()
+	globals.PanicOnError(err)
+	repos := ghAccountInfo.FullName
+	for _, secret := range secrets {
+		resp_code, reposForSecrets, err := wrappers.GHGetReposForSecret(secret.EnvironmentVariable, pat)
+		if err != nil {
+			globals.EchoError("Error processing secret ", secret.EnvironmentVariable, ".  Skipping.")
+			continue
+		}
+		switch resp_code {
+		case 200:
+			for _, r := range reposForSecrets {
+				if !strings.EqualFold(r.FullName, ghAccountInfo.FullName) {
+					repos += "," + r.FullName
+				}
+			}
+		case 404:
+			// this will just use repos == ghAccountInfo.Repo
+		default:
+			globals.EchoError("Unexpected response code from calling GitHub: ", resp_code)
+			continue // skip this secret
+		}
 
-	scanner := bufio.NewScanner(file)
-	beforeSecrets := true
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, START_SECRET_SECTION) {
-			beforeSecrets = false
-			continue
+		err = wrappers.GHSecretSet(ghAccountInfo.Account, ghAccountInfo.Repo, secret.EnvironmentVariable, secret.Value)
+		if err != nil {
+			globals.EchoError("Error saving GitHub Secrets: ", err.Error())
 		}
-		if beforeSecrets {
-			continue
-		}
-		if len(line) == 0 || line[0] == '#' || strings.HasPrefix(line, "export ") {
-			// Skip blank lines, comments and export statements.
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			// Invalid line format.
-			return nil, fmt.Errorf("invalid line in file: %s", line)
-		}
-		key, value := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-		if _, ok := secrets[key]; ok {
-			// Duplicate key found.
-			return nil, fmt.Errorf("duplicate key in file: %s", key)
-		}
-		secrets[key] = strings.Trim(value, "\"")
 	}
-	if err := scanner.Err(); err != nil {
-		// Error occurred while reading the file.
-		return nil, err
-	}
-	return secrets, nil
+
 }

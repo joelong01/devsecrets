@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -210,6 +211,7 @@ func GHSecretSet(account string, repo string, name string, secret string) (err e
 type GithubAccountInfo struct {
 	Repo    string
 	Account string
+	FullName string
 }
 
 /*
@@ -238,7 +240,7 @@ func GHGetAccountInfo() (info GithubAccountInfo, err error) {
 	// Set the account and repo in the struct
 	info.Account = parts[3]
 	info.Repo = parts[4]
-
+	info.FullName = fmt.Sprint(info.Account, "/", info.Repo)
 	return
 }
 
@@ -254,7 +256,8 @@ func GHGetAuthToken() (token string, err error) {
 		token = ""
 		err = errors.New("not logged in to GitHub")
 	}
-
+	// this is the token + \n....
+	token = token[:len(token)-1]
 	return
 }
 
@@ -263,5 +266,53 @@ func handleWrapperErr(err *error) (errout error) {
 		globals.EchoError((*err).Error() + "\n")
 	}
 	errout = *err
+	return
+}
+
+type GHRepoInfo struct {
+	ID       int    `json:"id"`
+	NodeID   string `json:"node_id"`
+	Name     string `json:"name"`
+	FullName string `json:"full_name"`
+	Private  bool   `json:"private"`
+	Owner    struct {
+		Login string `json:"login"`
+		ID    int    `json:"id"`
+	} `json:"owner"`
+	TotalCount int `json:"total_count"`
+}
+
+type RepositoryResponse struct {
+	Repositories []GHRepoInfo `json:"repositories"`
+}
+
+// GHGetReposForSecret retrieves the list of repositories associated with a GitHub secret.
+// It returns the HTTP response code, the list of repositories, and any error encountered.
+// 'secretName' is the name of the secret to retrieve the repositories for.
+// 'pat' is the GitHub personal access token to use for authentication.
+// assumes that the HTTP response code is 3 characters long if the curl call succeeds
+func GHGetReposForSecret(secretName string, pat string) (responseCode int, info []GHRepoInfo, err error) {
+	url := fmt.Sprintf("https://api.github.com/user/codespaces/secrets/%s/repositories", secretName)
+	args := []string{"-s", "-w", "%{http_code}", "-H", "Authorization: Bearer " + pat, url}
+	stdout, _, err := CmdExecOs("curl", args)
+	if err != nil {
+		return 0, nil, fmt.Errorf("curl error: %v", err)
+	}
+	out := stdout.String()
+	responseCode, err = strconv.Atoi(out[len(out)-3:])
+	if err != nil {
+		err = errors.New("unexpected return value from curl.  Last 3 digits shoudl be the response code")
+		return
+	}
+	if responseCode == 200 {
+		type RepositoryResponse struct {
+			Repositories []GHRepoInfo `json:"repositories"`
+		}
+		var rr RepositoryResponse
+		if err := json.Unmarshal([]byte(out[:len(out)-3]), &rr); err != nil {
+			return responseCode, nil, fmt.Errorf("JSON unmarshal error: %v", err)
+		}
+		info = rr.Repositories
+	}
 	return
 }

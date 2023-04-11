@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"strings"
 
@@ -435,7 +436,9 @@ type Secret struct {
 	EnvironmentVariable string `json:"environmentVariable"`
 	Description         string `json:"description"`
 	ShellScript         string `json:"shellscript"`
+	Value               string `json:"-"` // this means that i want a Value in the struct, but not in the json
 }
+
 type DevSecrets struct {
 	Options struct {
 		UseGitHubUserSecrets bool `json:"useGitHubUserSecrets"`
@@ -479,12 +482,13 @@ func (s Secret) FillChar(row int, col int) string {
 		panic("Bad column index passed in")
 	}
 }
+
 /*
 Load the secrets file and return a string that has the file modified time
 panics on error as there isn't much we can do if we can't find, open, or parse
 the input file.
 */
-func LoadSecretFile() (lastModified string) {
+func LoadSecretFile() (secrets *DevSecrets, lastModified time.Time) {
 	inputFile := Value("input-file")
 	if inputFile == "" {
 		globals.EchoError("--input-file must be set! \n")
@@ -502,7 +506,9 @@ func LoadSecretFile() (lastModified string) {
 	}
 	fileInfo, err := os.Stat(inputFile)
 	globals.PanicOnError(err)
-	lastModified = fileInfo.ModTime().String()
+	lastModified = fileInfo.ModTime()
+
+	secrets = &LocalSecrets
 	return
 }
 

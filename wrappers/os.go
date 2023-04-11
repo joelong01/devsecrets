@@ -61,7 +61,7 @@ func CmdExecOsInteractive(name string, args []string) (stdout bytes.Buffer, stde
 	//
 	//	this will allow us to use the normal console for output/errors *and* capture the buffer to use in the program
 	mwStdout := io.MultiWriter(os.Stdout, &stdout)
- 	mwStdErr := io.MultiWriter(os.Stderr, &stderr)
+	mwStdErr := io.MultiWriter(os.Stderr, &stderr)
 	cmd.Stdout = mwStdout
 	cmd.Stderr = mwStdErr
 	cmd.Stdin = os.Stdin
@@ -113,8 +113,6 @@ func CmdArgsToString(cmd string, args []string) (out string) {
 	return
 }
 
-
-
 /*
 find ./ -name '*.yaml' -type f -exec sed -i 's,https://github.com/microsoft/coral-control-plane-seed,https://github.com/$account/coral-control-plane,g' -- {} +
 example: ReplaceTextInFiles(tempDir, "yaml", "https://github.com/microsoft/coral-control-plane-seed, https://github.com/owner/repo")
@@ -150,26 +148,29 @@ func Touch(file string) (err error) {
 }
 
 /*
-uses grep to find a string in a file.  sets found to true if found
-error is set to be what grep reports to stderr
+uses sed to find a string in a file.  sets found to true if found
+error is set to be what sed reports to stderr.  value is in value
 */
-func FindInFile(fileName string, toFind string) (found bool, err error) {
-	args := []string{toFind, fileName}
-	stdout, stderr, err := CmdExecOs("grep", args)
+func FindKvpValueInFile(toFind string, fileName string) (found bool, value string, err error) {
+	args := []string{"-n", "-e", "s/^" + toFind + "=\"\\([^\"]*\\)\"$/\\1/p", fileName}
+	stdout, stderr, err := CmdExecOs("sed", args)
 	if stdout.Len() != 0 {
 		found = true
+		value = strings.TrimSuffix(strings.TrimPrefix(stdout.String(), "\""), "\"")
+		value = strings.TrimSuffix(value, "\n")
 		return
 	}
 
-	if strings.EqualFold(err.Error(), "exit status 1") {
+	if err == nil && stderr.Len() == 0 {
 		found = false
-		err = nil
 		return
 	}
-	err = errors.New(stderr.String())
-	found = false
-	return
 
+	if stderr.Len() != 0 {
+		err = errors.New(stderr.String())
+		found = false
+	}
+	return
 }
 
 func RemoveLinesContaintainingString(fileName string, toFind string) (err error) {
@@ -222,8 +223,9 @@ func ReplaceFile(fileName string, with string) error {
 
 	return nil
 }
+
 /*
-this executes a bash script and then returns the *last line* of the output -- 
+this executes a bash script and then returns the *last line* of the output --
 so whatever the script wants to return should be the last echo call.
 */
 func ExecBash(script string) (string, error) {
@@ -232,12 +234,11 @@ func ExecBash(script string) (string, error) {
 	// Create a multi-writer to write to both os.Stdout and the buffer
 	mw := io.MultiWriter(os.Stdout, &buf)
 
-	cmd := &exec.Cmd {
-		Path: script,
+	cmd := &exec.Cmd{
+		Path:   script,
 		Stdout: mw,
-		Stdin: os.Stdin, 
+		Stdin:  os.Stdin,
 		Stderr: os.Stderr,
-
 	}
 
 	err := cmd.Run()
